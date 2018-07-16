@@ -64,7 +64,7 @@ int main() {
 	glDebugMessageCallback(MessageCallback, 0);
 #endif
 
-	auto particles = std::make_unique<ParticleArray<(win_size[0] * win_size[1]) / 2>>();
+	auto particles = std::make_unique<ParticleArray<(win_size[0] * win_size[1]) / 3>>();
 
 	{
 		std::random_device rd;
@@ -74,21 +74,22 @@ int main() {
 
 		for (auto &v : particles->positions) {
 			v.x = pos_x(gen);
-			v.y = pos_y(gen);
+			v.y = pos_x(gen);
 		}
 
-		std::uniform_real_distribution<float> vel_x(-1.f, 1.f);
-		std::uniform_real_distribution<float> vel_y(-1.f, 1.f);
+		std::bernoulli_distribution negative;
+		std::uniform_real_distribution<float> vel_x(0.0f, 1.f);
+		std::uniform_real_distribution<float> vel_y(0.0f, 1.f);
 
 		for (auto &v : particles->velocities) {
-			v.x = vel_x(gen);
-			v.y = vel_y(gen);
+			v.x = vel_x(gen) * (negative(gen) ? 1.f : -1.f);
+			v.y = vel_x(gen) * (negative(gen) ? 1.f : -1.f);
 		}
 	}
 
 
 	auto grid = std::make_unique<Grid<128>>();
-	
+
 	glfwSwapInterval(1);
 
 	GLuint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
@@ -130,8 +131,11 @@ int main() {
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
 
 	std::array<float, 30> times;
+	std::array<float, 30> sim_times;
 	std::fill(times.begin(), times.end(), 16.f);
+	std::fill(sim_times.begin(), sim_times.end(), 16.f);
 	std::size_t time_i = 0;
+	std::size_t sim_time_i = 0;
 	constexpr float step = 16.6e-4f;
 	glm::vec2 gravity{0.f, -9.89e-1f};
 	bool sim = false;
@@ -144,7 +148,7 @@ int main() {
 			sim = true;
 
 		if (sim) {
-			for (uint64_t i = 0; i < particles->size(); ++i) {
+			for (std::size_t i = 0; i < particles->size(); ++i) {
 				particles->positions[i] += step * particles->velocities[i];
 				particles->velocities[i] += step * gravity;
 
@@ -155,34 +159,55 @@ int main() {
 					particles->velocities[i].y = -particles->velocities[i].y;
 			}
 
-			for (uint64_t i = 0; i < particles->size(); ++i) {
+			for (std::size_t i = 0; i < particles->size(); ++i) {
 				grid->add_element(i, particles->positions[i]);
 			}
 
+			uint64_t colls = 0;
 			//handle collisions..
-			for (uint64_t i = 0; i < grid->cells.size(); ++i) {
-				const auto &cell = grid->cells[i];
-				for (uint64_t j = 0; j < grid->cell_sizes[i]; ++j) {
-					for (uint64_t k = j+1; k < grid->cell_sizes[i]; ++k) {
+			for (int16_t cell_y = 0; cell_y < grid->get_num_cells()-1; ++cell_y) {
+				for (int16_t cell_x = 0; cell_x < grid->get_num_cells()-1; ++cell_x) {
+					const CellIndex cell_index{cell_x, cell_y};
+					const auto cell_int_index = grid->get_cell(cell_index);
+					const auto &cell = grid->cells[cell_int_index];
+
+					for (std::size_t j = 0; j < grid->cell_sizes[cell_int_index]; ++j) {
 						const auto &a = cell.members[j];
-						const auto &b = cell.members[k];
-						const auto diff = glm::abs(particles->positions[a] - particles->positions[b]);
-						if (diff.x < 0.001f || diff.y < 0.001f) {
-							// collision!
-							particles->velocities[a] = -particles->velocities[a];
-							particles->velocities[b] = -particles->velocities[b];
+
+						for (int16_t adj_cell_y = cell_y; adj_cell_y <= cell_y; ++adj_cell_y) {
+							for (int16_t adj_cell_x = cell_x; adj_cell_x <= cell_x; ++adj_cell_x) {
+								CellIndex adj_index = {adj_cell_x, adj_cell_y};
+								uint16_t adj_int_index = grid->get_cell(adj_index);
+								const auto &adj_cell = grid->cells[adj_int_index];
+
+								std::size_t start_index = (cell_int_index == adj_int_index) ? (j+1) : 0;
+								for (std::size_t k = start_index; k < grid->cell_sizes[adj_int_index]; ++k) {
+									const auto &b = adj_cell.members[k];
+									const auto diff = glm::abs(particles->positions[a] - particles->positions[b]);
+									if (diff.x < 0.0001f && diff.y < 0.0001f) {
+										// collision!
+										particles->velocities[a] = particles->velocities[b] * 0.99f;
+										particles->velocities[b] = particles->velocities[a] * 0.99f;
+										++colls;
+									}
+								}
+							}
 						}
 					}
 				}
 			}
+
 			grid->reset();
 		}
 
+		const auto sim_end = std::chrono::high_resolution_clock::now();
+		sim_times[sim_time_i] = std::chrono::duration_cast<std::chrono::nanoseconds>(sim_end - start).count() / 1e6f;
+		sim_time_i = (sim_time_i + 1) % sim_times.size();
+		float sim_avg = std::accumulate(sim_times.begin(), sim_times.end(), 0.f) / static_cast<float>(sim_times.size());
 
 		glm::ivec2 win;
 		glfwGetWindowSize(window, &win.x, &win.y);
 		glViewport(0, 0, win.x, win.y);
-		
 
 		glClear(GL_COLOR_BUFFER_BIT);
 		glBufferData(GL_ARRAY_BUFFER, particles->size() * sizeof(decltype(particles->positions)::value_type), particles->positions.data(), GL_STATIC_DRAW);
@@ -194,9 +219,11 @@ int main() {
 		time_i = (time_i + 1) % times.size();
 		float avg = std::accumulate(times.begin(), times.end(), 0.f) / static_cast<float>(times.size());
 		std::stringstream title;
-		title << "parsim :: "
-		      << std::setprecision(3) << std::setw(7)
-		      << avg << " ms";
+		title << "parsim :: frame "
+		      << std::setprecision(4) << std::setw(6) << std::setfill('0')
+		      << avg << "\tms :: sim "
+		      << std::setprecision(4) << std::setw(6) << std::setfill('0')
+		      << sim_avg << "\tms";
 		glfwSetWindowTitle(window, title.str().c_str());
 	}
 

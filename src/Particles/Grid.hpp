@@ -7,6 +7,8 @@ struct CellIndex {
 	int16_t y;
 };
 
+inline bool operator==(const CellIndex &a, const CellIndex &b) {return a.x==b.x && a.y==b.y;}
+
 template<unsigned int MaxMembers>
 struct GridCell {
 	std::array<uint32_t, MaxMembers> members;
@@ -15,7 +17,7 @@ struct GridCell {
 // Supports NumCells up to 255
 template<int16_t NumCells>
 struct Grid {
-	std::array<GridCell<32>, NumCells*NumCells> cells;
+	std::array<GridCell<128>, NumCells*NumCells> cells;
 	std::array<uint8_t, NumCells*NumCells> cell_sizes;
 
 	static constexpr int16_t get_num_cells() { return NumCells; }
@@ -29,6 +31,13 @@ struct Grid {
 		return {
 			static_cast<int16_t>(NumCells * position.x),
 			static_cast<int16_t>(NumCells * position.y)
+		};
+	}
+
+	static constexpr CellIndex get_cell_index(const uint16_t cell_index) {
+		return {
+			cell_index % NumCells,
+			cell_index / NumCells
 		};
 	}
 
@@ -53,7 +62,7 @@ struct Grid {
 		}
 	}
 
-	void add_element(const uint16_t member, const glm::vec2 &position) {
+	void add_element(const uint32_t member, const glm::vec2 &position) {
 		const uint16_t cell_id = get_cell(position);
 		if (cell_id < NumCells*NumCells) {
 			auto &cell = cells[cell_id];

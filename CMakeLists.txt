@@ -13,6 +13,9 @@ set( PARSIM_SOURCES
 	src/main.cpp
 )
 
+#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /arch:SSE2")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /arch:SSE2")
+
 add_executable(parsim ${PARSIM_SOURCES})
 target_link_libraries(parsim glad)
 target_link_libraries(parsim glfw)
