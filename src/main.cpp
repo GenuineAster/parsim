@@ -1,5 +1,6 @@
 #include <random>
 #include <algorithm>
+#include <memory>
 #include <numeric>
 #include <array>
 #include <sstream>
@@ -12,6 +13,7 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/common.hpp>
+#include "Particles/ParticleArray.hpp"
 
 constexpr uint16_t win_size[] = {800, 600};
 
@@ -61,18 +63,25 @@ int main() {
 	glDebugMessageCallback(MessageCallback, 0);
 #endif
 
-	std::vector<glm::vec2> vecs;
-	vecs.resize((win_size[0] * win_size[1]) / 3);
+	auto particles = std::make_unique<ParticleArray<(win_size[0] * win_size[1]) / 3>>();
 
 	{
 		std::random_device rd;
 		std::mt19937 gen(rd());
-		std::uniform_real_distribution<float> x(0.f, 1.f);
-		std::uniform_real_distribution<float> y(0.f, 1.f);
+		std::uniform_real_distribution<float> pos_x(0.f, 1.f);
+		std::uniform_real_distribution<float> pos_y(0.f, 1.f);
 
-		for (auto &v : vecs) {
-			v.x = x(gen);
-			v.y = y(gen);
+		for (auto &v : particles->positions) {
+			v.x = pos_x(gen);
+			v.y = pos_y(gen);
+		}
+
+		std::uniform_real_distribution<float> vel_x(-1.f, 1.f);
+		std::uniform_real_distribution<float> vel_y(-1.f, 1.f);
+
+		for (auto &v : particles->velocities) {
+			v.x = vel_x(gen);
+			v.y = vel_y(gen);
 		}
 	}
 	
@@ -108,7 +117,7 @@ int main() {
 	GLuint buff;
 	glCreateBuffers(1, &buff);
 	glBindBuffer(GL_ARRAY_BUFFER, buff);
-	glBufferData(GL_ARRAY_BUFFER, vecs.size() * sizeof(decltype(vecs)::value_type), vecs.data(), GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, particles->size() * sizeof(decltype(particles->positions)::value_type), particles->positions.data(), GL_STATIC_DRAW);
 
 	GLuint vao;
 	glCreateVertexArrays(1, &vao);
@@ -117,22 +126,34 @@ int main() {
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
 
 	//glPointSize(3.f);
-	std::array<float, 10> times;
+	std::array<float, 30> times;
 	std::fill(times.begin(), times.end(), 16.f);
 	std::size_t time_i = 0;
+	constexpr float step = 16.6e-3f;
+	bool sim = false;
 	while ( ! glfwWindowShouldClose(window)) {
 		std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
 		glfwPollEvents();
 
+		int state = glfwGetKey(window, GLFW_KEY_SPACE);
+		if (state == GLFW_PRESS)
+			sim = true;
+
+		if (sim) {
+			for (uint64_t i = 0; i < particles->size(); ++i) {
+				particles->positions[i] += step * particles->velocities[i];
+			}
+		}
+
+
 		glm::ivec2 win;
 		glfwGetWindowSize(window, &win.x, &win.y);
 		glViewport(0, 0, win.x, win.y);
-		// std::cout<<win.x<<", "<<win.y<<std::endl;
-		// glUniform2i(0, win.x, win.y);
+		
 
 		glClear(GL_COLOR_BUFFER_BIT);
-		glBufferData(GL_ARRAY_BUFFER, vecs.size() * sizeof(decltype(vecs)::value_type), vecs.data(), GL_STATIC_DRAW);
-		glDrawArrays(GL_POINTS, 0, vecs.size());
+		glBufferData(GL_ARRAY_BUFFER, particles->size() * sizeof(decltype(particles->positions)::value_type), particles->positions.data(), GL_STATIC_DRAW);
+		glDrawArrays(GL_POINTS, 0, particles->size());
 		glfwSwapBuffers(window);
 
 		std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
