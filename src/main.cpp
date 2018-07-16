@@ -14,6 +14,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/common.hpp>
 #include "Particles/ParticleArray.hpp"
+#include "Particles/Grid.hpp"
 
 constexpr uint16_t win_size[] = {800, 600};
 
@@ -63,7 +64,7 @@ int main() {
 	glDebugMessageCallback(MessageCallback, 0);
 #endif
 
-	auto particles = std::make_unique<ParticleArray<(win_size[0] * win_size[1]) / 3>>();
+	auto particles = std::make_unique<ParticleArray<(win_size[0] * win_size[1]) / 2>>();
 
 	{
 		std::random_device rd;
@@ -84,6 +85,9 @@ int main() {
 			v.y = vel_y(gen);
 		}
 	}
+
+
+	auto grid = std::make_unique<Grid<128>>();
 	
 	glfwSwapInterval(1);
 
@@ -128,7 +132,7 @@ int main() {
 	std::array<float, 30> times;
 	std::fill(times.begin(), times.end(), 16.f);
 	std::size_t time_i = 0;
-	constexpr float step = 16.6e-3f;
+	constexpr float step = 16.6e-4f;
 	glm::vec2 gravity{0.f, -9.89e-1f};
 	bool sim = false;
 	while ( ! glfwWindowShouldClose(window)) {
@@ -150,6 +154,28 @@ int main() {
 				if (particles->positions[i].y < 0.f || particles->positions[i].y > 1.f)
 					particles->velocities[i].y = -particles->velocities[i].y;
 			}
+
+			for (uint64_t i = 0; i < particles->size(); ++i) {
+				grid->add_element(i, particles->positions[i]);
+			}
+
+			//handle collisions..
+			for (uint64_t i = 0; i < grid->cells.size(); ++i) {
+				const auto &cell = grid->cells[i];
+				for (uint64_t j = 0; j < grid->cell_sizes[i]; ++j) {
+					for (uint64_t k = j+1; k < grid->cell_sizes[i]; ++k) {
+						const auto &a = cell.members[j];
+						const auto &b = cell.members[k];
+						const auto diff = glm::abs(particles->positions[a] - particles->positions[b]);
+						if (diff.x < 0.001f || diff.y < 0.001f) {
+							// collision!
+							particles->velocities[a] = -particles->velocities[a];
+							particles->velocities[b] = -particles->velocities[b];
+						}
+					}
+				}
+			}
+			grid->reset();
 		}
 
 
