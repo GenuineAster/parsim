@@ -125,11 +125,11 @@ int main() {
 	glEnableVertexArrayAttrib(vao, 0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
 
-	//glPointSize(3.f);
 	std::array<float, 30> times;
 	std::fill(times.begin(), times.end(), 16.f);
 	std::size_t time_i = 0;
 	constexpr float step = 16.6e-3f;
+	glm::vec2 gravity{0.f, -9.89e-1f};
 	bool sim = false;
 	while ( ! glfwWindowShouldClose(window)) {
 		std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
@@ -142,6 +142,7 @@ int main() {
 		if (sim) {
 			for (uint64_t i = 0; i < particles->size(); ++i) {
 				particles->positions[i] += step * particles->velocities[i];
+				particles->velocities[i] += step * gravity;
 
 				if (particles->positions[i].x < 0.f || particles->positions[i].x > 1.f)
 					particles->velocities[i].x = -particles->velocities[i].x;
