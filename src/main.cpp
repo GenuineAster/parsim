@@ -142,6 +142,12 @@ int main() {
 		if (sim) {
 			for (uint64_t i = 0; i < particles->size(); ++i) {
 				particles->positions[i] += step * particles->velocities[i];
+
+				if (particles->positions[i].x < 0.f || particles->positions[i].x > 1.f)
+					particles->velocities[i].x = -particles->velocities[i].x;
+
+				if (particles->positions[i].y < 0.f || particles->positions[i].y > 1.f)
+					particles->velocities[i].y = -particles->velocities[i].y;
 			}
 		}
 
